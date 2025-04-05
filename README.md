@@ -91,7 +91,7 @@ Add the following to `claude_desktop_config.json`:
 ```
 ---
 # Usage 
-Once connected, you can interact with your WhatsApp contacts through Claude, leveraging Claude's AI capabilities in your WhatsApp conversations.
+Once connected via ODBC, you can interact with your WhatsApp contacts through Claude, leveraging Claude's AI capabilities in your WhatsApp conversations.
 
 ## Tools Provided
 
