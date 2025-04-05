@@ -1,0 +1,21 @@
+[project]
+name = "mcp-pyodbc-server"
+version = "0.4.0"
+description = "A simple MCP ODBC server using FastAPI and PyODBC"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+ "mcp[cli]>=1.4.1",
+ "pyodbc>=5.2.0",
+ "python-dotenv>=1.0.1",
+]
+[[project.authors]]
+name = "OpenLink Software"
+email = "support@openlinksw.com"
+
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+[project.scripts]
+mcp-pyodbc-server = "mcp_pyodbc_server:main"
