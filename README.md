@@ -90,10 +90,10 @@ Add the following to `claude_desktop_config.json`:
 }
 ```
 ---
-# Usage 
-Once connected via ODBC, you can interact with your WhatsApp contacts through Claude, leveraging Claude's AI capabilities in your WhatsApp conversations.
+# Usage
 
 ## Tools Provided
+After successful installation, the following tools will be available to MCP client applications.
 
 ### Overview
 |name|description|
