@@ -482,12 +482,12 @@ def podbc_sparql_query(query: str, format:Optional[str]="json", timeout:Optional
 
 @mcp.tool(
     name="podbc_virtuoso_support_ai",
-    description="Tool to use the Virtuoso AI support function"
+    description="Interact with Virtuoso Support AI Agent"
 )
 def podbc_virtuoso_support_ai(prompt: str, api_key:Optional[str]=None, user:Optional[str]=None, 
                             password:Optional[str]=None, dsn:Optional[str]=None) -> str:
     """
-    Tool to use the Virtuoso AI support function
+    Tool for interacting the Virtuoso Support AI Agent
 
     Args:
         prompt (str): AI prompt text (required).
@@ -513,12 +513,12 @@ def podbc_virtuoso_support_ai(prompt: str, api_key:Optional[str]=None, user:Opti
 
 @mcp.tool(
     name="podbc_sparql_func",
-    description="Tool to use the SPARQL AI support function"
+    description="Use the SPARQL AI Agent function"
 )
 def podbc_sparql_func(prompt: str, api_key:Optional[str]=None, user:Optional[str]=None, 
                     password:Optional[str]=None, dsn:Optional[str]=None) -> str:
     """
-    Call SPARQL AI func.
+    Call SPARQL AI Agent func.
 
     Args:
         prompt (str): The prompt.
