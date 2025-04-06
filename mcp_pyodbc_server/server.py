@@ -110,7 +110,7 @@ def podbc_get_tables(Schema: Optional[str] = None, user:Optional[str]=None,
     try:
         with get_connection(True, user, password, dsn) as conn:
             cursor = conn.cursor()
-            rs = cursor.tables(table=None, catalog=cat, schema=None, tableType="TABLE");
+            rs = cursor.tables(table=None, catalog=cat, schema="%", tableType="TABLE");
             results = []
             for row in rs:
                 results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
