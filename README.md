@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/openlinksoftware-mcp-pyodbc-server-badge.png)](https://mseep.ai/app/openlinksoftware-mcp-pyodbc-server)
+
 ---
 # MCP Server ODBC via PyODBC
 
