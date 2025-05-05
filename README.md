@@ -223,3 +223,5 @@ For easier troubleshooting:
    ```
 
 Access the provided URL to troubleshoot server interactions.
+
+[![Verified on MseeP](https://mseep.ai/badge.svg)](https://mseep.ai/app/498645ed-425b-4a6e-bfea-14fa11457da6)
