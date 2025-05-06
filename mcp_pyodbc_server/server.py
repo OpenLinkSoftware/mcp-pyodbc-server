@@ -44,13 +44,6 @@ def get_connection(readonly=True, uid: Optional[str] = None, pwd: Optional[str] 
     return pyodbc.connect(dsn_string, autocommit=True, readonly=readonly)
 
 
-def escape_sql(value: str) -> str:
-    """
-    Escape a string to prevent SQL injection.
-    """
-    return value.replace("'", "''")
-
-
 ### Constants ###
 
 
@@ -441,8 +434,8 @@ def podbc_spasql_query(query: str, max_rows:Optional[int] = 20, timeout:Optional
     try:
         with get_connection(True, user, password, dsn) as conn:
             cursor = conn.cursor()
-            cmd = f"select Demo.demo.execute_spasql_query('{escape_sql(query)}', ?, ?) as result"
-            rs = cursor.execute(cmd, (max_rows, timeout,)).fetchone()
+            cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+            rs = cursor.execute(cmd, (query, max_rows, timeout,)).fetchone()
             return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
@@ -472,8 +465,8 @@ def podbc_sparql_query(query: str, format:Optional[str]="json", timeout:Optional
     try:
         with get_connection(True, user, password, dsn) as conn:
             cursor = conn.cursor()
-            cmd = f"select \"UB\".dba.\"sparqlQuery\"('{escape_sql(query)}', ?, ?) as result"
-            rs = cursor.execute(cmd, (format, timeout,)).fetchone()
+            cmd = f"select \"UB\".dba.\"sparqlQuery\"(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+            rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
             return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
@@ -549,8 +542,8 @@ def _exec_sparql(query: str, format:Optional[str]="json", timeout:Optional[int]=
     try:
         with get_connection(True, user, password, dsn) as conn:
             cursor = conn.cursor()
-            cmd = f"select Demo.demo.execute_spasql_query('{escape_sql(query)}', ?, ?) as result"
-            rs = cursor.execute(cmd, (format, timeout,)).fetchone()
+            cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+            rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
             return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
