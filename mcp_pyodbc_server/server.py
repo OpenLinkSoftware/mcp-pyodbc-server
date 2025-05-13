@@ -24,11 +24,11 @@ API_KEY = os.getenv("API_KEY", "none")
 ### Database ###
 
 
-def get_connection(readonly=True, uid: Optional[str] = None, pwd: Optional[str] = None, 
-                dsn: Optional[str] = None) -> pyodbc.Connection:
-    dsn = DB_DSN if dsn is None else dsn
-    uid = DB_UID if uid is None else uid
-    pwd = DB_PWD if pwd is None else pwd
+def get_connection(readonly=True, uid: str|None = None, pwd: str|None = None, 
+                dsn: str|None = None) -> pyodbc.Connection:
+    dsn = DB_DSN if dsn is None or dsn=="" else dsn
+    uid = DB_UID if uid is None or uid=="" else uid
+    pwd = DB_PWD if pwd is None or pwd=="" else pwd
 
     if dsn is None:
         raise ValueError("ODBC_DSN environment variable is not set.")
@@ -44,13 +44,14 @@ def get_connection(readonly=True, uid: Optional[str] = None, pwd: Optional[str] 
 
 
 def supports_catalogs(conn) -> bool:
-    catalog_term = conn.getinfo(pyodbc.SQL_CATALOG_TERM)
-    if not catalog_term:
-        # If the catalog term is empty, check if catalogs are supported in table definitions
-        usage_mask = conn.getinfo(pyodbc.SQL_CATALOG_USAGE)
-        return bool(usage_mask & pyodbc.SQL_CU_TABLE_DEFINITION)
-    return True
-
+    try:
+        with conn.cursor() as cursor:
+            # Check if the database supports catalogs
+            cursor.tables(catalog="%", schema=None, tableType=None)
+            row = cursor.fetchone()
+            return row is not None and row[0] is not None
+    except pyodbc.Error as e:
+        return False
 
 ### Constants ###
 
@@ -62,7 +63,7 @@ mcp = FastMCP('mcp-pyodbc-server', transport=["stdio", "sse"])
     name="podbc_get_schemas",
     description="Retrieve and return a list of all schema names from the connected database."
 	)
-def podbc_get_schemas(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_get_schemas(user: str|None=None, password: str|None=None, dsn: str|None=None) -> str:
     """
     Retrieve and return a list of all schema names from the connected database.
 
@@ -93,9 +94,9 @@ def podbc_get_schemas(user:Optional[str]=None, password:Optional[str]=None, dsn:
 @mcp.tool(
     name="podbc_get_tables",
     description="Retrieve and return a list containing information about tables in specified schema, if empty uses connection default"
-)
-def podbc_get_tables(Schema: Optional[str] = None, user:Optional[str]=None, 
-                    password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+    )
+def podbc_get_tables(Schema: str|None=None, user: str|None=None, 
+                    password: str|None=None, dsn: str|None=None) -> str:
     """
     Retrieve and return a list containing information about tables.
 
@@ -111,18 +112,23 @@ def podbc_get_tables(Schema: Optional[str] = None, user:Optional[str]=None,
     Returns:
         str: A list containing information about tables.
     """
-    cat = "%" if Schema is None else Schema
+    cat = "%" if Schema is None or Schema=="" else Schema
     try:
         with get_connection(True, user, password, dsn) as conn:
             has_cats = supports_catalogs(conn)
             with conn.cursor() as cursor:
-                if has_cats:
-                    rs = cursor.tables(table=None, catalog=cat, schema="%", tableType="TABLE")
-                else:
-                    rs = cursor.tables(table=None, catalog="%", schema=cat, tableType="TABLE")
                 results = []
-                for row in rs:
-                    results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
+                if has_cats:
+                    rs = cursor.tables(table='%', catalog=cat, schema="%", tableType="TABLE")
+                    for row in rs:
+                        if row[0]==cat:
+                            results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
+                else:
+                    logging.info(f"--- Schema:{cat} | {Schema} ")
+                    rs = cursor.tables(table='%', catalog=None, schema=cat, tableType="TABLE")
+                    for row in rs:
+                        if cat=="%" or row[1]==cat:
+                            results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
                 return json.dumps(results, indent=2)
     except pyodbc.Error as e:
         logging.error(f"Error retrieving tables: {e}")
@@ -134,8 +140,8 @@ def podbc_get_tables(Schema: Optional[str] = None, user:Optional[str]=None,
     description="Retrieve and return a dictionary containing the definition of a table, including column names, data types, nullable,"
                 " autoincrement, primary key, and foreign keys."
 )
-def podbc_describe_table(Schema:str, table: str, user:Optional[str]=None, 
-                        password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_describe_table(Schema:str|None, table: str, user: str|None=None, 
+                        password: str|None=None, dsn: str|None=None) -> str:
     """
     Retrieve and return a dictionary containing the definition of a table, including column names, data types, nullable, autoincrement, primary key, and foreign keys.
 
@@ -175,12 +181,12 @@ def _has_table(conn, cat:str, table:str):
         else:
             row = cursor.tables(table=table, catalog=None, schema=cat, tableType=None).fetchone()
         if row:
-            return True, {"cat":row[0], "sch": row[1], "name":row[2]}
+            return True, {"cat":row[0] if has_cats else None, "sch": row[1], "name":row[2]}
         else:
             return False, {}
 
 
-def _get_columns(conn, cat: str, sch: str, table:str):
+def _get_columns(conn, cat: str|None, sch: str, table:str):
     with conn.cursor() as cursor:
         ret = []
         for row in cursor.columns(table=table, catalog=cat, schema=sch):
@@ -196,18 +202,18 @@ def _get_columns(conn, cat: str, sch: str, table:str):
         return ret
 
 
-def _get_pk_constraint(conn, cat: str, sch: str, table:str):
+def _get_pk_constraint(conn, cat: str|None, sch: str, table:str):
     with conn.cursor() as cursor:
         ret = None
         rs = cursor.primaryKeys(table=table, catalog=cat, schema=sch).fetchall()
-        if len(rs) > 0:
+        if rs is not None and len(rs) > 0:
             ret = { "constrained_columns": [row[3] for row in rs],
                 "name": rs[0][5]
             }
         return ret
 
 
-def _get_foreign_keys(conn, cat: str, sch: str, table:str):
+def _get_foreign_keys(conn, cat: str|None, sch: str, table:str):
     def fkey_rec():
         return {
             "name": None,
@@ -242,7 +248,8 @@ def _get_foreign_keys(conn, cat: str, sch: str, table:str):
 def _get_table_info(conn, cat:str, sch: str, table: str) -> Dict[str, Any]:
     try:
         columns = _get_columns(conn, cat=cat, sch=sch, table=table)
-        primary_keys = _get_pk_constraint(conn, cat=cat, sch=sch, table=table)['constrained_columns']
+        pkeys = _get_pk_constraint(conn, cat=cat, sch=sch, table=table)
+        primary_keys = pkeys.get("constrained_columns") if pkeys is not None else []
         foreign_keys = _get_foreign_keys(conn, cat=cat, sch=sch, table=table)
 
         table_info = {
@@ -266,8 +273,8 @@ def _get_table_info(conn, cat:str, sch: str, table: str) -> Dict[str, Any]:
     name="podbc_filter_table_names",
     description="Retrieve and return a list containing information about tables whose names contain the substring 'q' ."
 )
-def podbc_filter_table_names(q: str, Schema: Optional[str] = None, user:Optional[str]=None, password:Optional[str]=None, 
-                            dsn:Optional[str]=None) -> str:
+def podbc_filter_table_names(q: str, Schema: str|None=None, user: str|None=None, password: str|None=None, 
+                            dsn: str|None=None) -> str:
     """
     Retrieve and return a list containing information about tables whose names contain the substring 'q'
 
@@ -286,9 +293,9 @@ def podbc_filter_table_names(q: str, Schema: Optional[str] = None, user:Optional
             has_cats = supports_catalogs(conn)
             with conn.cursor() as cursor:
                 if has_cats:
-                    rs = cursor.tables(table=None, catalog=cat, schema='%', tableType="TABLE");
+                    rs = cursor.tables(table='%', catalog=cat, schema='%', tableType="TABLE");
                 else:
-                    rs = cursor.tables(table=None, catalog='%', schema=cat, tableType="TABLE");
+                    rs = cursor.tables(table='%', catalog=None, schema=cat, tableType="TABLE");
                 results = []
                 for row in rs:
                     if q in row[2]:
@@ -304,8 +311,8 @@ def podbc_filter_table_names(q: str, Schema: Optional[str] = None, user:Optional
     name="podbc_execute_query",
     description="Execute a SQL query and return results in JSONL format."
 )
-def podbc_execute_query(query: str, max_rows: int = 100, params: Optional[Dict[str, Any]] = None,
-                  user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_execute_query(query: str, max_rows: int = 100, params: list[Any]|None = None,
+                  user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SQL query and return results in JSONL format.
 
@@ -346,8 +353,8 @@ def podbc_execute_query(query: str, max_rows: int = 100, params: Optional[Dict[s
     name="podbc_execute_query_md",
     description="Execute a SQL query and return results in Markdown table format."
 )
-def podbc_execute_query_md(query: str, max_rows: int = 100, params: Optional[Dict[str, Any]] = None, 
-                     user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_execute_query_md(query: str, max_rows: int = 100, params: list[Any]|None = None, 
+                     user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SQL query and return results in Markdown table format.
 
@@ -394,8 +401,8 @@ def podbc_execute_query_md(query: str, max_rows: int = 100, params: Optional[Dic
     name="podbc_query_database",
     description="Execute a SQL query and return results in JSONL format."
 )
-def podbc_query_database(query: str, user:Optional[str]=None, password:Optional[str]=None, 
-                    dsn:Optional[str]=None) -> str:
+def podbc_query_database(query: str, user:str|None=None, password:str|None=None, 
+                    dsn:str|None=None) -> str:
     """
     Execute a SQL query and return results in JSONL format.
 
@@ -433,8 +440,8 @@ def podbc_query_database(query: str, user:Optional[str]=None, password:Optional[
     name="podbc_spasql_query",
     description="Execute a SPASQL query and return results."
 )
-def podbc_spasql_query(query: str, max_rows:Optional[int] = 20, timeout:Optional[int] = 300000,
-                    user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_spasql_query(query: str, max_rows:int = 20, timeout:int = 300000,
+                    user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPASQL query and return results in JSONL format.
 
@@ -464,8 +471,8 @@ def podbc_spasql_query(query: str, max_rows:Optional[int] = 20, timeout:Optional
     name="podbc_sparql_query",
     description="Execute a SPARQL query and return results."
 )
-def podbc_sparql_query(query: str, format:Optional[str]="json", timeout:Optional[int]= 300000,
-                user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_query(query: str, format:str="json", timeout:int= 300000,
+                user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -495,8 +502,8 @@ def podbc_sparql_query(query: str, format:Optional[str]="json", timeout:Optional
     name="podbc_virtuoso_support_ai",
     description="Interact with Virtuoso Support AI Agent"
 )
-def podbc_virtuoso_support_ai(prompt: str, api_key:Optional[str]=None, user:Optional[str]=None, 
-                            password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_virtuoso_support_ai(prompt: str, api_key:str|None=None, user:str|None=None, 
+                            password:str|None=None, dsn:str|None=None) -> str:
     """
     Tool for interacting the Virtuoso Support AI Agent
 
@@ -526,8 +533,8 @@ def podbc_virtuoso_support_ai(prompt: str, api_key:Optional[str]=None, user:Opti
     name="podbc_sparql_func",
     description="Use the SPARQL AI Agent function"
 )
-def podbc_sparql_func(prompt: str, api_key:Optional[str]=None, user:Optional[str]=None, 
-                    password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_func(prompt: str, api_key:str|None=None, user:str|None=None, 
+                    password:str|None=None, dsn:str|None=None) -> str:
     """
     Call SPARQL AI Agent func.
 
@@ -553,8 +560,8 @@ def podbc_sparql_func(prompt: str, api_key:Optional[str]=None, user:Optional[str
         raise 
 
 
-def _exec_sparql(query: str, format:Optional[str]="json", timeout:Optional[int]= 300000,
-                 user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def _exec_sparql(query: str, format:str="json", timeout:int= 300000,
+                 user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     try:
         with get_connection(True, user, password, dsn) as conn:
             with conn.cursor() as cursor:
@@ -573,7 +580,7 @@ def _exec_sparql(query: str, format:Optional[str]="json", timeout:Optional[int]=
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned. "
 )
-def podbc_sparql_get_entity_types(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_get_entity_types(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -622,7 +629,7 @@ SELECT DISTINCT * FROM (
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned."
 )
-def podbc_sparql_get_entity_types_detailed(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_get_entity_types_detailed(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -665,7 +672,7 @@ SELECT * FROM (
                 "It groups by entity type and orders the results by sample count in descending order. "
                 "Note: The LIMIT clause is set to 20 to restrict the number of entity types returned."
 )
-def podbc_sparql_get_entity_types_samples(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_get_entity_types_samples(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -706,7 +713,7 @@ SELECT * FROM (
     name="podbc_sparql_get_ontologies",
     description="This query retrieves all ontologies in the RDF graph, along with their labels and comments if available."
 )
-def podbc_sparql_get_ontologies(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
+def podbc_sparql_get_ontologies(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
     """
     Execute a SPARQL query and return results.
 
