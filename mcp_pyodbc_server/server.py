@@ -40,8 +40,16 @@ def get_connection(readonly=True, uid: Optional[str] = None, pwd: Optional[str] 
     dsn_string = f"DSN={dsn};UID={uid};PWD={pwd}"
     logging.info(f"DSN:{dsn}  UID:{uid}")
     # connection_string="DSN=VOS;UID=dba;PWD=dba"
-
     return pyodbc.connect(dsn_string, autocommit=True, readonly=readonly)
+
+
+def supports_catalogs(conn) -> bool:
+    catalog_term = conn.getinfo(pyodbc.SQL_CATALOG_TERM)
+    if not catalog_term:
+        # If the catalog term is empty, check if catalogs are supported in table definitions
+        usage_mask = conn.getinfo(pyodbc.SQL_CATALOG_USAGE)
+        return bool(usage_mask & pyodbc.SQL_CU_TABLE_DEFINITION)
+    return True
 
 
 ### Constants ###
@@ -53,7 +61,7 @@ mcp = FastMCP('mcp-pyodbc-server', transport=["stdio", "sse"])
 @mcp.tool(
     name="podbc_get_schemas",
     description="Retrieve and return a list of all schema names from the connected database."
-)
+	)
 def podbc_get_schemas(user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
     """
     Retrieve and return a list of all schema names from the connected database.
@@ -68,11 +76,15 @@ def podbc_get_schemas(user:Optional[str]=None, password:Optional[str]=None, dsn:
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.tables(table=None, catalog="%", schema=None, tableType=None);
-            catalogs = {row[0] for row in rs.fetchall()}
-            return json.dumps(list(catalogs))
-
+            has_cats = supports_catalogs(conn)
+            with conn.cursor() as cursor:
+                if has_cats:
+                    rs = cursor.tables(table=None, catalog="%", schema=None, tableType=None)
+                    catalogs = {row[0] for row in rs.fetchall()}
+                else:
+                    rs = cursor.tables(table=None, catalog=None, schema="%", tableType=None)
+                    catalogs = {row[1] for row in rs.fetchall()}
+                return json.dumps(list(catalogs))
     except pyodbc.Error as e:
         logging.error(f"Error retrieving schemas: {e}")
         raise
@@ -102,13 +114,16 @@ def podbc_get_tables(Schema: Optional[str] = None, user:Optional[str]=None,
     cat = "%" if Schema is None else Schema
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.tables(table=None, catalog=cat, schema="%", tableType="TABLE");
-            results = []
-            for row in rs:
-                results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
-                
-            return json.dumps(results, indent=2)
+            has_cats = supports_catalogs(conn)
+            with conn.cursor() as cursor:
+                if has_cats:
+                    rs = cursor.tables(table=None, catalog=cat, schema="%", tableType="TABLE")
+                else:
+                    rs = cursor.tables(table=None, catalog="%", schema=cat, tableType="TABLE")
+                results = []
+                for row in rs:
+                    results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
+                return json.dumps(results, indent=2)
     except pyodbc.Error as e:
         logging.error(f"Error retrieving tables: {e}")
         raise
@@ -153,8 +168,12 @@ def podbc_describe_table(Schema:str, table: str, user:Optional[str]=None,
 
 
 def _has_table(conn, cat:str, table:str):
+    has_cats = supports_catalogs(conn)
     with conn.cursor() as cursor:
-        row = cursor.tables(table=table, catalog=cat, schema=None, tableType=None).fetchone()
+        if has_cats:
+            row = cursor.tables(table=table, catalog=cat, schema=None, tableType=None).fetchone()
+        else:
+            row = cursor.tables(table=table, catalog=None, schema=cat, tableType=None).fetchone()
         if row:
             return True, {"cat":row[0], "sch": row[1], "name":row[2]}
         else:
@@ -199,7 +218,6 @@ def _get_foreign_keys(conn, cat: str, sch: str, table:str):
             "referred_columns": [],
             "options": {},
         }
-
     fkeys = defaultdict(fkey_rec)
     with conn.cursor() as cursor:
         rs = cursor.foreignKeys(foreignTable=table, foreignCatalog=cat, foreignSchema=sch)
@@ -235,12 +253,10 @@ def _get_table_info(conn, cat:str, sch: str, table: str) -> Dict[str, Any]:
             "primary_keys": primary_keys,
             "foreign_keys": foreign_keys
         }
-
         for column in columns:
             column["primary_key"] = column['name'] in primary_keys
 
         return table_info
-
     except pyodbc.Error as e:
         logging.error(f"Error retrieving table info: {e}")
         raise
@@ -267,14 +283,18 @@ def podbc_filter_table_names(q: str, Schema: Optional[str] = None, user:Optional
     cat = "%" if Schema is None else Schema
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.tables(table=None, catalog=cat, schema='%', tableType="TABLE");
-            results = []
-            for row in rs:
-                if q in row[2]:
-                    results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
+            has_cats = supports_catalogs(conn)
+            with conn.cursor() as cursor:
+                if has_cats:
+                    rs = cursor.tables(table=None, catalog=cat, schema='%', tableType="TABLE");
+                else:
+                    rs = cursor.tables(table=None, catalog='%', schema=cat, tableType="TABLE");
+                results = []
+                for row in rs:
+                    if q in row[2]:
+                        results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
 
-            return json.dumps(results, indent=2)
+                return json.dumps(results, indent=2)
     except pyodbc.Error as e:
         logging.error(f"Error filtering table names: {e}")
         raise
@@ -302,22 +322,21 @@ def podbc_execute_query(query: str, max_rows: int = 100, params: Optional[Dict[s
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.execute(query) if params is None else cursor.execute(query, params)
-            columns = [column[0] for column in rs.description]            
-            results = []
-            for row in rs:
-                rs_dict = dict(zip(columns, row))
-                truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
-                results.append(truncated_row)                
-                if len(results) >= max_rows:
-                    break
+            with conn.cursor() as cursor:
+                rs = cursor.execute(query) if params is None else cursor.execute(query, params)
+                columns = [column[0] for column in rs.description]            
+                results = []
+                for row in rs:
+                    rs_dict = dict(zip(columns, row))
+                    truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
+                    results.append(truncated_row)                
+                    if len(results) >= max_rows:
+                        break
                 
-            # Convert the results to JSONL format
-            jsonl_results = "\n".join(json.dumps(row) for row in results)
-
-            # Return the JSONL formatted results
-            return jsonl_results
+                # Convert the results to JSONL format
+                jsonl_results = "\n".join(json.dumps(row) for row in results)
+                # Return the JSONL formatted results
+                return jsonl_results
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -345,28 +364,27 @@ def podbc_execute_query_md(query: str, max_rows: int = 100, params: Optional[Dic
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.execute(query) if params is None else cursor.execute(query, params)
-            columns = [column[0] for column in rs.description]            
-            results = []
-            for row in rs:
-                rs_dict = dict(zip(columns, row))
-                truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
-                results.append(truncated_row)                
-                if len(results) >= max_rows:
-                    break
+            with conn.cursor() as cursor:
+                rs = cursor.execute(query) if params is None else cursor.execute(query, params)
+                columns = [column[0] for column in rs.description]            
+                results = []
+                for row in rs:
+                    rs_dict = dict(zip(columns, row))
+                    truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
+                    results.append(truncated_row)                
+                    if len(results) >= max_rows:
+                        break
                 
-            # Create the Markdown table header
-            md_table = "| " + " | ".join(columns) + " |\n"
-            md_table += "| " + " | ".join(["---"] * len(columns)) + " |\n"
+                # Create the Markdown table header
+                md_table = "| " + " | ".join(columns) + " |\n"
+                md_table += "| " + " | ".join(["---"] * len(columns)) + " |\n"
 
-            # Add rows to the Markdown table
-            for row in results:
-                md_table += "| " + " | ".join(str(row[col]) for col in columns) + " |\n"
+                # Add rows to the Markdown table
+                for row in results:
+                    md_table += "| " + " | ".join(str(row[col]) for col in columns) + " |\n"
 
-            # Return the Markdown formatted results
-            return md_table
-
+                # Return the Markdown formatted results
+                return md_table
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -392,20 +410,20 @@ def podbc_query_database(query: str, user:Optional[str]=None, password:Optional[
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            rs = cursor.execute(query)
-            columns = [column[0] for column in rs.description]            
-            results = []
-            for row in rs:
-                rs_dict = dict(zip(columns, row))
-                truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
-                results.append(truncated_row)                
+            with conn.cursor() as cursor:
+                rs = cursor.execute(query)
+                columns = [column[0] for column in rs.description]            
+                results = []
+                for row in rs:
+                    rs_dict = dict(zip(columns, row))
+                    truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
+                    results.append(truncated_row)                
                 
-            # Convert the results to JSONL format
-            jsonl_results = "\n".join(json.dumps(row) for row in results)
+                # Convert the results to JSONL format
+                jsonl_results = "\n".join(json.dumps(row) for row in results)
 
-            # Return the JSONL formatted results
-            return jsonl_results
+                # Return the JSONL formatted results
+                return jsonl_results
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -422,7 +440,7 @@ def podbc_spasql_query(query: str, max_rows:Optional[int] = 20, timeout:Optional
 
     Args:
         query (str): The SPASQL query to execute.
-        max_rows (int): Maximum number of rows to return. Default is 100.
+        max_rows (int): Maximum number of rows to return. Default is 20.
         timeout (int): Query timeout. Default is 30000ms.
         user (Optional[str]=None): Optional username.
         password (Optional[str]=None): Optional password.
@@ -433,10 +451,10 @@ def podbc_spasql_query(query: str, max_rows:Optional[int] = 20, timeout:Optional
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
-            rs = cursor.execute(cmd, (query, max_rows, timeout,)).fetchone()
-            return rs[0]
+            with conn.cursor() as cursor:
+                cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+                rs = cursor.execute(cmd, (query, max_rows, timeout,)).fetchone()
+                return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -464,10 +482,10 @@ def podbc_sparql_query(query: str, format:Optional[str]="json", timeout:Optional
     """
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            cmd = f"select \"UB\".dba.\"sparqlQuery\"(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
-            rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
-            return rs[0]
+            with conn.cursor() as cursor:
+                cmd = f"select \"UB\".dba.\"sparqlQuery\"(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+                rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
+                return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -495,13 +513,13 @@ def podbc_virtuoso_support_ai(prompt: str, api_key:Optional[str]=None, user:Opti
     try:
         _api_key = api_key if api_key is not None else API_KEY
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            cmd = f"select DEMO.DBA.OAI_VIRTUOSO_SUPPORT_AI(?, ?) as result"
-            rs = cursor.execute(cmd, (prompt, _api_key,)).fetchone()
-            return rs[0]
+            with conn.cursor() as cursor:
+                cmd = f"select DEMO.DBA.OAI_VIRTUOSO_SUPPORT_AI(?, ?) as result"
+                rs = cursor.execute(cmd, (prompt, _api_key,)).fetchone()
+                return rs[0]
     except pyodbc.Error as e:
-        logging.error(f"Error executing request")
-        raise pyodbc.Error("Error executing request")
+        logging.error(f"Error executing request: {e}")
+        raise 
 
 
 @mcp.tool(
@@ -526,25 +544,23 @@ def podbc_sparql_func(prompt: str, api_key:Optional[str]=None, user:Optional[str
     try:
         _api_key = api_key if api_key is not None else API_KEY
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            cmd = f"select DEMO.DBA.OAI_SPARQL_FUNC(?, ?) as result"
-            rs = cursor.execute(cmd, (prompt, _api_key,)).fetchone()
-            return rs[0]
+            with conn.cursor() as cursor:
+                cmd = f"select DEMO.DBA.OAI_SPARQL_FUNC(?, ?) as result"
+                rs = cursor.execute(cmd, (prompt, _api_key,)).fetchone()
+                return rs[0]
     except pyodbc.Error as e:
-        logging.error(f"Error executing request")
-        raise pyodbc.Error("Error executing request")
+        logging.error(f"Error executing request: {e}")
+        raise 
 
 
 def _exec_sparql(query: str, format:Optional[str]="json", timeout:Optional[int]= 300000,
                  user:Optional[str]=None, password:Optional[str]=None, dsn:Optional[str]=None) -> str:
-    timeout = 30000
-    format = "json"
     try:
         with get_connection(True, user, password, dsn) as conn:
-            cursor = conn.cursor()
-            cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
-            rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
-            return rs[0]
+            with conn.cursor() as cursor:
+                cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
+                rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
+                return rs[0]
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
