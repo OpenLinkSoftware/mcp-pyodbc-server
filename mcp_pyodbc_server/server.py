@@ -63,7 +63,7 @@ mcp = FastMCP('mcp-pyodbc-server', transport=["stdio", "sse"])
     name="podbc_get_schemas",
     description="Retrieve and return a list of all schema names from the connected database."
 	)
-def podbc_get_schemas(user: str|None=None, password: str|None=None, dsn: str|None=None) -> str:
+def podbc_get_schemas(user: str="", password: str="", dsn: str="") -> str:
     """
     Retrieve and return a list of all schema names from the connected database.
 
@@ -80,10 +80,10 @@ def podbc_get_schemas(user: str|None=None, password: str|None=None, dsn: str|Non
             has_cats = supports_catalogs(conn)
             with conn.cursor() as cursor:
                 if has_cats:
-                    rs = cursor.tables(table=None, catalog="%", schema=None, tableType=None)
+                    rs = cursor.tables(table="", catalog="%", schema="", tableType=None)
                     catalogs = {row[0] for row in rs.fetchall()}
                 else:
-                    rs = cursor.tables(table=None, catalog=None, schema="%", tableType=None)
+                    rs = cursor.tables(table="", catalog=None, schema="%", tableType=None)
                     catalogs = {row[1] for row in rs.fetchall()}
                 return json.dumps(list(catalogs))
     except pyodbc.Error as e:
@@ -95,8 +95,8 @@ def podbc_get_schemas(user: str|None=None, password: str|None=None, dsn: str|Non
     name="podbc_get_tables",
     description="Retrieve and return a list containing information about tables in specified schema, if empty uses connection default"
     )
-def podbc_get_tables(Schema: str|None=None, user: str|None=None, 
-                    password: str|None=None, dsn: str|None=None) -> str:
+def podbc_get_tables(Schema: str="", user: str="", 
+                    password: str="", dsn: str="") -> str:
     """
     Retrieve and return a list containing information about tables.
 
@@ -112,7 +112,7 @@ def podbc_get_tables(Schema: str|None=None, user: str|None=None,
     Returns:
         str: A list containing information about tables.
     """
-    cat = "%" if Schema is None or Schema=="" else Schema
+    cat = "%" if not Schema else Schema
     try:
         with get_connection(True, user, password, dsn) as conn:
             has_cats = supports_catalogs(conn)
@@ -124,7 +124,6 @@ def podbc_get_tables(Schema: str|None=None, user: str|None=None,
                         if row[0]==cat:
                             results.append({"TABLE_CAT":row[0], "TABLE_SCHEM":row[1], "TABLE_NAME":row[2]})
                 else:
-                    logging.info(f"--- Schema:{cat} | {Schema} ")
                     rs = cursor.tables(table='%', catalog=None, schema=cat, tableType="TABLE")
                     for row in rs:
                         if cat=="%" or row[1]==cat:
@@ -140,8 +139,8 @@ def podbc_get_tables(Schema: str|None=None, user: str|None=None,
     description="Retrieve and return a dictionary containing the definition of a table, including column names, data types, nullable,"
                 " autoincrement, primary key, and foreign keys."
 )
-def podbc_describe_table(Schema:str|None, table: str, user: str|None=None, 
-                        password: str|None=None, dsn: str|None=None) -> str:
+def podbc_describe_table(Schema: str="", table: str="", user: str="", 
+                        password: str="", dsn: str="") -> str:
     """
     Retrieve and return a dictionary containing the definition of a table, including column names, data types, nullable, autoincrement, primary key, and foreign keys.
 
@@ -158,7 +157,7 @@ def podbc_describe_table(Schema:str|None, table: str, user: str|None=None,
     Returns:
         str: A dictionary containing the table definition, including column names, data types, nullable, autoincrement, primary key, and foreign keys.
     """
-    cat = "%" if Schema is None else Schema
+    cat = "%" if not Schema else Schema
     table_definition = {}
     try:
         with get_connection(True, user, password, dsn) as conn:
@@ -273,8 +272,8 @@ def _get_table_info(conn, cat:str, sch: str, table: str) -> Dict[str, Any]:
     name="podbc_filter_table_names",
     description="Retrieve and return a list containing information about tables whose names contain the substring 'q' ."
 )
-def podbc_filter_table_names(q: str, Schema: str|None=None, user: str|None=None, password: str|None=None, 
-                            dsn: str|None=None) -> str:
+def podbc_filter_table_names(q: str, Schema: str="", user: str="", password: str="", 
+                            dsn: str="") -> str:
     """
     Retrieve and return a list containing information about tables whose names contain the substring 'q'
 
@@ -287,7 +286,7 @@ def podbc_filter_table_names(q: str, Schema: str|None=None, user: str|None=None,
     Returns:
         str: A list containing information about tables whose names contain the substring 'q'.
     """
-    cat = "%" if Schema is None else Schema
+    cat = "%" if not Schema else Schema
     try:
         with get_connection(True, user, password, dsn) as conn:
             has_cats = supports_catalogs(conn)
@@ -312,7 +311,7 @@ def podbc_filter_table_names(q: str, Schema: str|None=None, user: str|None=None,
     description="Execute a SQL query and return results in JSONL format."
 )
 def podbc_execute_query(query: str, max_rows: int = 100, params: list[Any]|None = None,
-                  user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+                  user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SQL query and return results in JSONL format.
 
@@ -354,7 +353,7 @@ def podbc_execute_query(query: str, max_rows: int = 100, params: list[Any]|None 
     description="Execute a SQL query and return results in Markdown table format."
 )
 def podbc_execute_query_md(query: str, max_rows: int = 100, params: list[Any]|None = None, 
-                     user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+                     user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SQL query and return results in Markdown table format.
 
@@ -401,8 +400,8 @@ def podbc_execute_query_md(query: str, max_rows: int = 100, params: list[Any]|No
     name="podbc_query_database",
     description="Execute a SQL query and return results in JSONL format."
 )
-def podbc_query_database(query: str, user:str|None=None, password:str|None=None, 
-                    dsn:str|None=None) -> str:
+def podbc_query_database(query: str, user:str="", password:str="", 
+                    dsn:str="") -> str:
     """
     Execute a SQL query and return results in JSONL format.
 
@@ -441,7 +440,7 @@ def podbc_query_database(query: str, user:str|None=None, password:str|None=None,
     description="Execute a SPASQL query and return results."
 )
 def podbc_spasql_query(query: str, max_rows:int = 20, timeout:int = 300000,
-                    user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+                    user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPASQL query and return results in JSONL format.
 
@@ -472,7 +471,7 @@ def podbc_spasql_query(query: str, max_rows:int = 20, timeout:int = 300000,
     description="Execute a SPARQL query and return results."
 )
 def podbc_sparql_query(query: str, format:str="json", timeout:int= 300000,
-                user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+                user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -502,8 +501,8 @@ def podbc_sparql_query(query: str, format:str="json", timeout:int= 300000,
     name="podbc_virtuoso_support_ai",
     description="Interact with Virtuoso Support AI Agent"
 )
-def podbc_virtuoso_support_ai(prompt: str, api_key:str|None=None, user:str|None=None, 
-                            password:str|None=None, dsn:str|None=None) -> str:
+def podbc_virtuoso_support_ai(prompt: str, api_key:str="", user:str="", 
+                            password:str="", dsn:str="") -> str:
     """
     Tool for interacting the Virtuoso Support AI Agent
 
@@ -518,7 +517,7 @@ def podbc_virtuoso_support_ai(prompt: str, api_key:str|None=None, user:str|None=
         str: Results data in JSON.
     """
     try:
-        _api_key = api_key if api_key is not None else API_KEY
+        _api_key = api_key if not api_key else API_KEY
         with get_connection(True, user, password, dsn) as conn:
             with conn.cursor() as cursor:
                 cmd = f"select DEMO.DBA.OAI_VIRTUOSO_SUPPORT_AI(?, ?) as result"
@@ -533,8 +532,8 @@ def podbc_virtuoso_support_ai(prompt: str, api_key:str|None=None, user:str|None=
     name="podbc_sparql_func",
     description="Use the SPARQL AI Agent function"
 )
-def podbc_sparql_func(prompt: str, api_key:str|None=None, user:str|None=None, 
-                    password:str|None=None, dsn:str|None=None) -> str:
+def podbc_sparql_func(prompt: str, api_key:str="", user:str="", 
+                    password:str="", dsn:str="") -> str:
     """
     Call SPARQL AI Agent func.
 
@@ -549,7 +548,7 @@ def podbc_sparql_func(prompt: str, api_key:str|None=None, user:str|None=None,
         str: Results data in JSON.
     """
     try:
-        _api_key = api_key if api_key is not None else API_KEY
+        _api_key = api_key if not api_key else API_KEY
         with get_connection(True, user, password, dsn) as conn:
             with conn.cursor() as cursor:
                 cmd = f"select DEMO.DBA.OAI_SPARQL_FUNC(?, ?) as result"
@@ -561,7 +560,7 @@ def podbc_sparql_func(prompt: str, api_key:str|None=None, user:str|None=None,
 
 
 def _exec_sparql(query: str, format:str="json", timeout:int= 300000,
-                 user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+                 user:str="", password:str="", dsn:str="") -> str:
     try:
         with get_connection(True, user, password, dsn) as conn:
             with conn.cursor() as cursor:
@@ -580,7 +579,7 @@ def _exec_sparql(query: str, format:str="json", timeout:int= 300000,
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned. "
 )
-def podbc_sparql_get_entity_types(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+def podbc_sparql_get_entity_types(user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -629,7 +628,7 @@ SELECT DISTINCT * FROM (
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned."
 )
-def podbc_sparql_get_entity_types_detailed(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+def podbc_sparql_get_entity_types_detailed(user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -672,7 +671,7 @@ SELECT * FROM (
                 "It groups by entity type and orders the results by sample count in descending order. "
                 "Note: The LIMIT clause is set to 20 to restrict the number of entity types returned."
 )
-def podbc_sparql_get_entity_types_samples(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+def podbc_sparql_get_entity_types_samples(user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
@@ -713,7 +712,7 @@ SELECT * FROM (
     name="podbc_sparql_get_ontologies",
     description="This query retrieves all ontologies in the RDF graph, along with their labels and comments if available."
 )
-def podbc_sparql_get_ontologies(user:str|None=None, password:str|None=None, dsn:str|None=None) -> str:
+def podbc_sparql_get_ontologies(user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
