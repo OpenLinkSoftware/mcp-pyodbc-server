@@ -47,7 +47,7 @@ def supports_catalogs(conn) -> bool:
     try:
         with conn.cursor() as cursor:
             # Check if the database supports catalogs
-            cursor.tables(catalog="%", schema=None, tableType=None)
+            cursor.tables(catalog="%", schema="", table="", tableType=None)
             row = cursor.fetchone()
             return row is not None and row[0] is not None
     except pyodbc.Error as e:
@@ -526,20 +526,6 @@ def podbc_sparql_func(prompt: str, api_key:str="", user:str="",
     except pyodbc.Error as e:
         logging.error(f"Error executing request: {e}")
         raise 
-
-
-def _exec_sparql(query: str, format:str="json", timeout:int= 300000,
-                 user:str="", password:str="", dsn:str="") -> str:
-    try:
-        with get_connection(True, user, password, dsn) as conn:
-            with conn.cursor() as cursor:
-                cmd = f"select Demo.demo.execute_spasql_query(charset_recode(?, '_WIDE_', 'UTF-8'), ?, ?) as result"
-                rs = cursor.execute(cmd, (query, format, timeout,)).fetchone()
-                return rs[0]
-    except pyodbc.Error as e:
-        logging.error(f"Error executing query: {e}")
-        raise
-
 
 
 @mcp.tool(
