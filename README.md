@@ -106,7 +106,6 @@ After successful installation, the following tools will be available to MCP clie
 |podbc_execute_query|Execute a SQL query and return results in JSONL format.|
 |podbc_execute_query_md|Execute a SQL query and return results in Markdown table format.|
 |podbc_spasql_query|Execute a SPASQL query and return results.|
-|podbc_sparql_query|Execute a SPARQL query and return results.|
 |podbc_virtuoso_support_ai|Interact with the Virtuoso Support Assistant/Agent -- a Virtuoso-specific feature for interacting with LLMs|
 
 ### Detailed Description
@@ -185,17 +184,6 @@ After successful installation, the following tools will be available to MCP clie
     - `password` (string, optional): Database password. Defaults to "demo".
     - `dsn` (string, optional): ODBC data source name. Defaults to "Local Virtuoso".
   - Returns the result from the underlying stored procedure call (e.g., `Demo.demo.execute_spasql_query`).
-
-- **podbc_sparql_query**
-  - Execute a SPARQL query and return results. This is a Virtuoso-specific feature.
-  - Input parameters:
-    - `query` (string, required): The SPARQL query string.
-    - `format` (string, optional): Desired result format. Defaults to 'json'.
-    - `timeout` (number, optional): Query timeout in milliseconds. Defaults to 30000.
-    - `user` (string, optional): Database username. Defaults to "demo".
-    - `password` (string, optional): Database password. Defaults to "demo".
-    - `dsn` (string, optional): ODBC data source name. Defaults to "Local Virtuoso".
-  - Returns the result from the underlying function call (e.g., `"UB".dba."sparqlQuery"`).
 
 - **podbc_virtuoso_support_ai**
   - Utilizes a Virtuoso-specific AI Assistant function, passing a prompt and optional API key. This is a Virtuoso-specific feature.
