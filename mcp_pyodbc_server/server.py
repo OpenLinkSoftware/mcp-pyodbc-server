@@ -339,10 +339,7 @@ def podbc_execute_query(query: str, max_rows: int = 100, params: list[Any]|None 
                     if len(results) >= max_rows:
                         break
                 
-                # Convert the results to JSONL format
-                jsonl_results = "\n".join(json.dumps(row) for row in results)
-                # Return the JSONL formatted results
-                return jsonl_results
+                return json.dumps(results, indent=2)
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -425,11 +422,7 @@ def podbc_query_database(query: str, params: list[Any]|None = None,
                     truncated_row = {key: (str(value)[:MAX_LONG_DATA] if value is not None else None) for key, value in rs_dict.items()}
                     results.append(truncated_row)                
                 
-                # Convert the results to JSONL format
-                jsonl_results = "\n".join(json.dumps(row) for row in results)
-
-                # Return the JSONL formatted results
-                return jsonl_results
+                return json.dumps(results, indent=2)
     except pyodbc.Error as e:
         logging.error(f"Error executing query: {e}")
         raise
@@ -534,12 +527,12 @@ def podbc_sparql_func(prompt: str, api_key:str="", user:str="",
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned. "
 )
-def podbc_sparql_list_entity_types(graph:str="", user:str="", password:str="", dsn:str="") -> str:
+def podbc_sparql_list_entity_types(graph_iri:str="", user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
     Args:
-        graph (Optional[str]=None): Optional graphname.
+        graph_iri (Optional[str]=None): Optional graph IRI  .
         user (Optional[str]=None): Optional username.
         password (Optional[str]=None): Optional password.
         dsn (Optional[str]=None): Optional dsn name.
@@ -547,8 +540,8 @@ def podbc_sparql_list_entity_types(graph:str="", user:str="", password:str="", d
     Returns:
         str: Results in requested format as string.
     """
-    graph_clause = f'GRAPH `iri(??)`' if graph else 'GRAPH ?g'
-    params = [graph] if graph else None
+    graph_clause = f'GRAPH `iri(??)`' if graph_iri else 'GRAPH ?g'
+    params = [graph_iri] if graph_iri else None
 
     query = f"""
 SELECT DISTINCT * FROM (
@@ -586,12 +579,12 @@ SELECT DISTINCT * FROM (
                 "It filters out blank nodes and ensures that only IRI types are returned. "
                 "The LIMIT clause is set to 100 to restrict the number of entity types returned."
 )
-def podbc_sparql_list_entity_types_detailed(graph:str="", user:str="", password:str="", dsn:str="") -> str:
+def podbc_sparql_list_entity_types_detailed(graph_iri:str="", user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
     Args:
-        graph (Optional[str]=None): Optional graphname.
+        graph_iri (Optional[str]=None): Optional graph IRI.
         user (Optional[str]=None): Optional username.
         password (Optional[str]=None): Optional password.
         dsn (Optional[str]=None): Optional dsn name.
@@ -599,8 +592,8 @@ def podbc_sparql_list_entity_types_detailed(graph:str="", user:str="", password:
     Returns:
         str: Results in requested format as string.
     """
-    graph_clause = f'GRAPH `iri(??)`' if graph else 'GRAPH ?g'
-    params = [graph] if graph else None
+    graph_clause = f'GRAPH `iri(??)`' if graph_iri else 'GRAPH ?g'
+    params = [graph_iri] if graph_iri else None
     query = f"""
 SELECT * FROM (
     SPARQL
@@ -631,12 +624,12 @@ SELECT * FROM (
                 "It groups by entity type and orders the results by sample count in descending order. "
                 "Note: The LIMIT clause is set to 20 to restrict the number of entity types returned."
 )
-def podbc_sparql_list_entity_types_samples(graph:str="", user:str="", password:str="", dsn:str="") -> str:
+def podbc_sparql_list_entity_types_samples(graph_iri:str="", user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
     Args:
-        graph (Optional[str]=None): Optional graphname.
+        graph_iri (Optional[str]=None): Optional graph IRI.
         user (Optional[str]=None): Optional username.
         password (Optional[str]=None): Optional password.
         dsn (Optional[str]=None): Optional dsn name.
@@ -644,8 +637,8 @@ def podbc_sparql_list_entity_types_samples(graph:str="", user:str="", password:s
     Returns:
         str: Results in requested format as string.
     """
-    graph_clause = f'GRAPH `iri(??)`' if graph else 'GRAPH ?g'
-    params = [graph] if graph else None
+    graph_clause = f'GRAPH `iri(??)`' if graph_iri else 'GRAPH ?g'
+    params = [graph_iri] if graph_iri else None
     query = f"""
 SELECT * FROM (
     SPARQL
@@ -674,12 +667,12 @@ SELECT * FROM (
     name="podbc_sparql_list_ontologies",
     description="This query retrieves all ontologies in the RDF graph, along with their labels and comments if available."
 )
-def podbc_sparql_list_ontologies(graph:str="", user:str="", password:str="", dsn:str="") -> str:
+def podbc_sparql_list_ontologies(graph_iri:str="", user:str="", password:str="", dsn:str="") -> str:
     """
     Execute a SPARQL query and return results.
 
     Args:
-        graph (Optional[str]=None): Optional graphname.
+        graph_iri (Optional[str]=None): Optional graph IRI.
         user (Optional[str]=None): Optional username.
         password (Optional[str]=None): Optional password.
         dsn (Optional[str]=None): Optional dsn name.
@@ -687,8 +680,8 @@ def podbc_sparql_list_ontologies(graph:str="", user:str="", password:str="", dsn
     Returns:
         str: Results in requested format as string.
     """
-    graph_clause = f'GRAPH `iri(??)`' if graph else 'GRAPH ?g'
-    params = [graph] if graph else None
+    graph_clause = f'GRAPH `iri(??)`' if graph_iri else 'GRAPH ?g'
+    params = [graph_iri] if graph_iri else None
     query = f"""
 SELECT * FROM (
     SPARQL 
